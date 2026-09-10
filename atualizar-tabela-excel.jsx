@@ -24,6 +24,19 @@ if (app.documents.length === 0) {
 var doc = app.activeDocument;
 
 // ============================================
+// FUNÇÃO: Verificar se objeto está vazio
+// ============================================
+
+function objetoVazio(obj) {
+    for (var chave in obj) {
+        if (obj.hasOwnProperty(chave)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// ============================================
 // FUNÇÃO: Selecionar arquivo Excel
 // ============================================
 
@@ -181,7 +194,7 @@ function lerDadosExcel(caminhoExcel) {
         // Tentar método via CSV
         dados = lerExcelMacViaCSV(caminhoExcel);
         
-        if (!dados || Object.keys(dados).length === 0) {
+        if (!dados || objetoVazio(dados)) {
             alert("⚠️ Não foi possível ler o Excel com Python.\nCertifique-se de ter pandas instalado:\npip3 install pandas openpyxl");
             return null;
         }
@@ -380,7 +393,7 @@ function main() {
     alert("📂 Lendo dados do Excel...\n(Aguarde, pode levar alguns segundos)");
     var dadosExcel = lerDadosExcel(arquivoExcel.fsName);
     
-    if (!dadosExcel || Object.keys(dadosExcel).length === 0) {
+    if (!dadosExcel || objetoVazio(dadosExcel)) {
         alert("❌ Nenhum dado foi carregado do Excel!");
         exit();
     }
