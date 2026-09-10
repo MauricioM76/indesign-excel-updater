@@ -3,13 +3,7 @@
 /**
  * Script: Atualizar Tabelas InDesign com Dados do Excel
  * Versão: macOS - SEM DEPENDÊNCIA DE PYTHON
- * 
- * Funcionamento:
- * 1. Você seleciona o arquivo Excel
- * 2. Script converte para CSV automaticamente (usando AppleScript)
- * 3. Lê o código na PRIMEIRA COLUNA da tabela do InDesign
- * 4. Busca o código no Excel
- * 5. Preenche as células com os dados correspondentes
+ * Usa Excel nativo via AppleScript
  */
 
 // ============================================
@@ -60,17 +54,16 @@ function converterExcelParaCSV(caminhoExcel) {
     
     try {
         // AppleScript que abre Excel, exporta como CSV e fecha
-        var applescript = 'tell application "Microsoft Excel"\n' +
+        var applescript = 'on run argv\n' +
+            'tell application "Microsoft Excel"\n' +
             '    activate\n' +
-            '    set docPath to "' + caminhoExcel + '"\n' +
-            '    open file docPath\n' +
+            '    open (argv as text)\n' +
             '    tell active workbook\n' +
-            '        tell active sheet\n' +
-            '            save as it to "' + caminhoCSV + '" file format CSV file format\n' +
-            '        end tell\n' +
+            '        save as it filename (item 2 of argv) file format CSV file format\n' +
             '        close without saving\n' +
             '    end tell\n' +
-            'end tell';
+            'end tell\n' +
+            'end run';
         
         // Salvar AppleScript em arquivo temporário
         var scriptFile = new File(Folder.temp.absoluteURI + "/excel_to_csv.scpt");
@@ -78,25 +71,49 @@ function converterExcelParaCSV(caminhoExcel) {
         scriptFile.write(applescript);
         scriptFile.close();
         
-        // Executar AppleScript
-        system.callSystem("osascript '" + scriptFile.fsName + "'");
+        // Executar AppleScript com argumentos
+        var cmd = 'osascript ' + 
+                  '"' + scriptFile.fsName + '" ' + 
+                  '"' + caminhoExcel + '" ' +
+                  '"' + caminhoCSV + '"';
+        
+        try {
+            var resultado = system.callSystem(cmd);
+        } catch (e) {
+            // Fallback: tentar sem argumentos
+            var applescript2 = 'tell application "Microsoft Excel"\n' +
+                'activate\n' +
+                'open "' + caminhoExcel + '"\n' +
+                'tell active workbook\n' +
+                'save as it filename "' + caminhoCSV + '" file format CSV file format\n' +
+                'close without saving\n' +
+                'end tell\n' +
+                'end tell';
+            
+            var scriptFile2 = new File(Folder.temp.absoluteURI + "/excel_to_csv2.scpt");
+            scriptFile2.open("w");
+            scriptFile2.write(applescript2);
+            scriptFile2.close();
+            
+            system.callSystem('osascript "' + scriptFile2.fsName + '"');
+        }
         
         // Pequeno delay para garantir que o arquivo foi criado
-        $.sleep(2000);
+        $.sleep(3000);
         
         // Verificar se arquivo CSV foi criado
         var csvFile = new File(caminhoCSV);
         if (csvFile.exists) {
-            scriptFile.remove();
+            try { scriptFile.remove(); } catch(e) {}
+            try { scriptFile2.remove(); } catch(e) {}
             return caminhoCSV;
         } else {
             alert("❌ Erro ao converter Excel para CSV");
-            scriptFile.remove();
             return null;
         }
         
     } catch (e) {
-        alert("❌ Erro ao converter Excel: " + e.message + "\n\nCertifique-se de ter Microsoft Excel instalado.");
+        alert("❌ Erro ao converter Excel: " + e.message);
         return null;
     }
 }
@@ -200,7 +217,7 @@ function lerDadosExcel(caminhoExcel) {
         var caminhoCSV = converterExcelParaCSV(caminhoExcel);
         
         if (!caminhoCSV) {
-            alert("❌ Falha ao converter Excel para CSV");
+            alert("❌ Falha ao converter Excel para CSV\n\nCertifique-se de:\n1. Ter Microsoft Excel instalado\n2. O arquivo Excel estar fechado");
             return null;
         }
         
