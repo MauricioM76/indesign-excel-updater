@@ -39,58 +39,6 @@ function selecionarArquivoExcel() {
 }
 
 // ============================================
-// FUNÇÃO: Ler Excel no macOS usando AppleScript
-// ============================================
-
-function lerExcelMac(caminhoExcel) {
-    var dados = {};
-    
-    try {
-        // Converter caminho para macOS
-        var caminhoMac = caminhoExcel.replace(/\\/g, "/");
-        
-        // Script AppleScript para ler Excel
-        var applescript = 'tell application "Microsoft Excel"\n' +
-            'activate\n' +
-            'open "' + caminhoMac + '"\n' +
-            'tell active workbook\n' +
-            'tell active sheet\n' +
-            'set rowCount to count of rows whose value is not equal to ""\n' +
-            'set colCount to count of columns\n' +
-            'set allData to {}\n' +
-            'repeat with i from 1 to rowCount\n' +
-            'set rowData to {}\n' +
-            'repeat with j from 1 to colCount\n' +
-            'set cellValue to value of cell j of row i\n' +
-            'set end of rowData to cellValue\n' +
-            'end repeat\n' +
-            'set end of allData to rowData\n' +
-            'end repeat\n' +
-            'return allData\n' +
-            'end tell\n' +
-            'end tell\n' +
-            'close active workbook\n' +
-            'end tell';
-        
-        // Executar AppleScript
-        var processo = new File("/tmp/read_excel.scpt");
-        processo.open("w");
-        processo.write(applescript);
-        processo.close();
-        
-        // Executar e capturar resultado
-        var resultado = sistema.callSystem("osascript /tmp/read_excel.scpt");
-        
-        // Nota: Abordagem simplificada - usar método alternativo abaixo
-        
-    } catch (e) {
-        // Fallback: Usar método via libreoffice/números ou CSV temporário
-    }
-    
-    return dados;
-}
-
-// ============================================
 // FUNÇÃO: Ler Excel usando conversão para CSV (macOS)
 // ============================================
 
@@ -201,20 +149,20 @@ function parseCSVLine(linha) {
     var dentro_aspas = false;
     
     for (var i = 0; i < linha.length; i++) {
-        var char = linha[i];
+        var caractere = linha[i];
         
-        if (char === '"') {
+        if (caractere === '"') {
             if (dentro_aspas && linha[i + 1] === '"') {
                 valorAtual += '"';
                 i++; // Pular próxima aspas
             } else {
                 dentro_aspas = !dentro_aspas;
             }
-        } else if (char === "," && !dentro_aspas) {
+        } else if (caractere === "," && !dentro_aspas) {
             valores.push(valorAtual);
             valorAtual = "";
         } else {
-            valorAtual += char;
+            valorAtual += caractere;
         }
     }
     
