@@ -2,14 +2,14 @@
 
 /**
  * Script: Atualizar Tabelas InDesign com Dados do Excel
- * Versão: macOS
+ * Versão: macOS - SEM DEPENDÊNCIA DE PYTHON
  * 
  * Funcionamento:
  * 1. Você seleciona o arquivo Excel
- * 2. Script lê o código na PRIMEIRA COLUNA da tabela do InDesign
- * 3. Busca o código no Excel
- * 4. Preenche as células com os dados correspondentes
- * 5. Adapta-se a qualquer ordem de colunas
+ * 2. Script converte para CSV automaticamente (usando AppleScript)
+ * 3. Lê o código na PRIMEIRA COLUNA da tabela do InDesign
+ * 4. Busca o código no Excel
+ * 5. Preenche as células com os dados correspondentes
  */
 
 // ============================================
@@ -52,47 +52,53 @@ function selecionarArquivoExcel() {
 }
 
 // ============================================
-// FUNÇÃO: Ler Excel usando conversão para CSV (macOS)
+// FUNÇÃO: Converter Excel para CSV via AppleScript
 // ============================================
 
-function lerExcelMacViaCSV(caminhoExcel) {
-    var dados = {};
+function converterExcelParaCSV(caminhoExcel) {
+    var caminhoCSV = Folder.temp.absoluteURI + "/temp_dados.csv";
     
     try {
-        // Criar arquivo CSV temporário
-        var caminhoCSV = Folder.temp.absoluteURI + "/temp_dados.csv";
+        // AppleScript que abre Excel, exporta como CSV e fecha
+        var applescript = 'tell application "Microsoft Excel"\n' +
+            '    activate\n' +
+            '    set docPath to "' + caminhoExcel + '"\n' +
+            '    open file docPath\n' +
+            '    tell active workbook\n' +
+            '        tell active sheet\n' +
+            '            save as it to "' + caminhoCSV + '" file format CSV file format\n' +
+            '        end tell\n' +
+            '        close without saving\n' +
+            '    end tell\n' +
+            'end tell';
         
-        // Usar Python para converter XLSX para CSV
-        var pythonScript = 'import pandas as pd\n' +
-            'import sys\n' +
-            'try:\n' +
-            '    df = pd.read_excel("' + caminhoExcel + '")\n' +
-            '    df.to_csv("' + caminhoCSV + '", index=False, quoting=1)\n' +
-            '    print("SUCCESS")\n' +
-            'except:\n' +
-            '    print("ERROR")\n';
-        
-        var scriptFile = new File(Folder.temp.absoluteURI + "/convert_excel.py");
+        // Salvar AppleScript em arquivo temporário
+        var scriptFile = new File(Folder.temp.absoluteURI + "/excel_to_csv.scpt");
         scriptFile.open("w");
-        scriptFile.write(pythonScript);
+        scriptFile.write(applescript);
         scriptFile.close();
         
-        // Executar script Python
-        var resultado = system.callSystem("python3 '" + scriptFile.fsName + "'");
+        // Executar AppleScript
+        system.callSystem("osascript '" + scriptFile.fsName + "'");
         
-        if (resultado.indexOf("SUCCESS") > -1) {
-            // Ler CSV
-            dados = lerCSV(caminhoCSV);
+        // Pequeno delay para garantir que o arquivo foi criado
+        $.sleep(2000);
+        
+        // Verificar se arquivo CSV foi criado
+        var csvFile = new File(caminhoCSV);
+        if (csvFile.exists) {
+            scriptFile.remove();
+            return caminhoCSV;
+        } else {
+            alert("❌ Erro ao converter Excel para CSV");
+            scriptFile.remove();
+            return null;
         }
         
-        // Limpar arquivos temporários
-        scriptFile.remove();
-        
     } catch (e) {
-        // Fallback para Excel via shell script
+        alert("❌ Erro ao converter Excel: " + e.message + "\n\nCertifique-se de ter Microsoft Excel instalado.");
+        return null;
     }
-    
-    return dados;
 }
 
 // ============================================
@@ -123,7 +129,6 @@ function lerCSV(caminhoCSV) {
         }
         
         // Ler dados
-        var linhaNum = 2;
         while (!arquivo.eof) {
             var linha = arquivo.readln();
             if (linha.trim() === "") continue;
@@ -184,18 +189,26 @@ function parseCSVLine(linha) {
 }
 
 // ============================================
-// FUNÇÃO: Ler Excel (macOS genérica)
+// FUNÇÃO: Ler Excel (macOS via Excel nativo)
 // ============================================
 
 function lerDadosExcel(caminhoExcel) {
     var dados = null;
     
     try {
-        // Tentar método via CSV
-        dados = lerExcelMacViaCSV(caminhoExcel);
+        // Converter para CSV usando Excel nativo
+        var caminhoCSV = converterExcelParaCSV(caminhoExcel);
+        
+        if (!caminhoCSV) {
+            alert("❌ Falha ao converter Excel para CSV");
+            return null;
+        }
+        
+        // Ler CSV
+        dados = lerCSV(caminhoCSV);
         
         if (!dados || objetoVazio(dados)) {
-            alert("⚠️ Não foi possível ler o Excel com Python.\nCertifique-se de ter pandas instalado:\npip3 install pandas openpyxl");
+            alert("⚠️ Nenhum dado foi lido do Excel.");
             return null;
         }
         
@@ -390,7 +403,7 @@ function main() {
     var arquivoExcel = selecionarArquivoExcel();
     
     // Ler dados do Excel
-    alert("📂 Lendo dados do Excel...\n(Aguarde, pode levar alguns segundos)");
+    alert("📂 Convertendo Excel para CSV...\n(Aguarde, pode levar alguns segundos)");
     var dadosExcel = lerDadosExcel(arquivoExcel.fsName);
     
     if (!dadosExcel || objetoVazio(dadosExcel)) {
