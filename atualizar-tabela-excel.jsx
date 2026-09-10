@@ -3,7 +3,7 @@
 /**
  * Script: Atualizar Tabelas InDesign com Dados do Excel
  * Versão: macOS - SEM DEPENDÊNCIA DE PYTHON
- * Usa Excel nativo via AppleScript
+ * Usa Excel nativo via AppleScript (método nativo do InDesign)
  */
 
 // ============================================
@@ -31,6 +31,35 @@ function objetoVazio(obj) {
 }
 
 // ============================================
+// FUNÇÃO: Executar AppleScript de forma segura
+// ============================================
+
+function executarAppleScript(script) {
+    try {
+        // Método 1: Usando eval (funciona em InDesign)
+        if (typeof system !== 'undefined' && system.callSystem) {
+            return system.callSystem('osascript -e \'' + script.replace(/'/g, "'\\''") + '\'');
+        }
+        
+        // Método 2: Salvando script em arquivo temporário
+        var scriptFile = new File(Folder.temp.absoluteURI + "/temp_script.scpt");
+        scriptFile.open("w");
+        scriptFile.write(script);
+        scriptFile.close();
+        
+        // Executar usando do shell
+        var resultado = $.system('osascript "' + scriptFile.fsName + '"');
+        
+        try { scriptFile.remove(); } catch(e) {}
+        
+        return resultado;
+        
+    } catch (e) {
+        return null;
+    }
+}
+
+// ============================================
 // FUNÇÃO: Selecionar arquivo Excel
 // ============================================
 
@@ -53,67 +82,33 @@ function converterExcelParaCSV(caminhoExcel) {
     var caminhoCSV = Folder.temp.absoluteURI + "/temp_dados.csv";
     
     try {
-        // AppleScript que abre Excel, exporta como CSV e fecha
-        var applescript = 'on run argv\n' +
-            'tell application "Microsoft Excel"\n' +
+        // AppleScript para converter Excel para CSV
+        var applescript = 'tell application "Microsoft Excel"\n' +
             '    activate\n' +
-            '    open (argv as text)\n' +
+            '    open "' + caminhoExcel + '"\n' +
             '    tell active workbook\n' +
-            '        save as it filename (item 2 of argv) file format CSV file format\n' +
+            '        save as it filename "' + caminhoCSV + '" file format CSV file format\n' +
             '        close without saving\n' +
             '    end tell\n' +
-            'end tell\n' +
-            'end run';
+            'end tell';
         
-        // Salvar AppleScript em arquivo temporário
-        var scriptFile = new File(Folder.temp.absoluteURI + "/excel_to_csv.scpt");
-        scriptFile.open("w");
-        scriptFile.write(applescript);
-        scriptFile.close();
+        // Executar AppleScript
+        var resultado = executarAppleScript(applescript);
         
-        // Executar AppleScript com argumentos
-        var cmd = 'osascript ' + 
-                  '"' + scriptFile.fsName + '" ' + 
-                  '"' + caminhoExcel + '" ' +
-                  '"' + caminhoCSV + '"';
-        
-        try {
-            var resultado = system.callSystem(cmd);
-        } catch (e) {
-            // Fallback: tentar sem argumentos
-            var applescript2 = 'tell application "Microsoft Excel"\n' +
-                'activate\n' +
-                'open "' + caminhoExcel + '"\n' +
-                'tell active workbook\n' +
-                'save as it filename "' + caminhoCSV + '" file format CSV file format\n' +
-                'close without saving\n' +
-                'end tell\n' +
-                'end tell';
-            
-            var scriptFile2 = new File(Folder.temp.absoluteURI + "/excel_to_csv2.scpt");
-            scriptFile2.open("w");
-            scriptFile2.write(applescript2);
-            scriptFile2.close();
-            
-            system.callSystem('osascript "' + scriptFile2.fsName + '"');
-        }
-        
-        // Pequeno delay para garantir que o arquivo foi criado
-        $.sleep(3000);
+        // Delay para garantir que o arquivo foi criado
+        $.sleep(2000);
         
         // Verificar se arquivo CSV foi criado
         var csvFile = new File(caminhoCSV);
         if (csvFile.exists) {
-            try { scriptFile.remove(); } catch(e) {}
-            try { scriptFile2.remove(); } catch(e) {}
             return caminhoCSV;
         } else {
-            alert("❌ Erro ao converter Excel para CSV");
+            alert("❌ Erro ao converter Excel para CSV\n\nCertifique-se de:\n1. Ter Microsoft Excel instalado\n2. O arquivo Excel estar fechado");
             return null;
         }
         
     } catch (e) {
-        alert("❌ Erro ao converter Excel: " + e.message);
+        alert("❌ Erro ao converter Excel:\n" + e.message);
         return null;
     }
 }
@@ -217,7 +212,6 @@ function lerDadosExcel(caminhoExcel) {
         var caminhoCSV = converterExcelParaCSV(caminhoExcel);
         
         if (!caminhoCSV) {
-            alert("❌ Falha ao converter Excel para CSV\n\nCertifique-se de:\n1. Ter Microsoft Excel instalado\n2. O arquivo Excel estar fechado");
             return null;
         }
         
