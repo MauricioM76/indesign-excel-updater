@@ -2,8 +2,19 @@
 
 /**
  * Script: Atualizar Tabelas InDesign com Dados do Excel
- * Versão: macOS - SEM DEPENDÊNCIA DE PYTHON
- * Usa Excel nativo via AppleScript (método nativo do InDesign)
+ * Versão: macOS - Lê CSV diretamente
+ * 
+ * Funcionamento:
+ * 1. Você seleciona um arquivo CSV
+ * 2. Script lê o código na PRIMEIRA COLUNA da tabela do InDesign
+ * 3. Busca o código no CSV
+ * 4. Preenche as células com os dados correspondentes
+ * 
+ * IMPORTANTE: Salve seu Excel como CSV antes de usar:
+ * 1. Abra o arquivo em Excel
+ * 2. File > Save As
+ * 3. Formato: CSV UTF-8 (.csv)
+ * 4. Use este arquivo com o script
  */
 
 // ============================================
@@ -31,40 +42,11 @@ function objetoVazio(obj) {
 }
 
 // ============================================
-// FUNÇÃO: Executar AppleScript de forma segura
+// FUNÇÃO: Selecionar arquivo CSV
 // ============================================
 
-function executarAppleScript(script) {
-    try {
-        // Método 1: Usando eval (funciona em InDesign)
-        if (typeof system !== 'undefined' && system.callSystem) {
-            return system.callSystem('osascript -e \'' + script.replace(/'/g, "'\\''") + '\'');
-        }
-        
-        // Método 2: Salvando script em arquivo temporário
-        var scriptFile = new File(Folder.temp.absoluteURI + "/temp_script.scpt");
-        scriptFile.open("w");
-        scriptFile.write(script);
-        scriptFile.close();
-        
-        // Executar usando do shell
-        var resultado = $.system('osascript "' + scriptFile.fsName + '"');
-        
-        try { scriptFile.remove(); } catch(e) {}
-        
-        return resultado;
-        
-    } catch (e) {
-        return null;
-    }
-}
-
-// ============================================
-// FUNÇÃO: Selecionar arquivo Excel
-// ============================================
-
-function selecionarArquivoExcel() {
-    var arquivo = File.openDialog("📁 Selecione o arquivo Excel com os dados", "Excel files:*.xlsx,*.xls");
+function selecionarArquivoCSV() {
+    var arquivo = File.openDialog("📁 Selecione o arquivo CSV com os dados", "CSV files:*.csv");
     
     if (!arquivo) {
         alert("❌ Nenhum arquivo selecionado. Script cancelado.");
@@ -72,45 +54,6 @@ function selecionarArquivoExcel() {
     }
     
     return arquivo;
-}
-
-// ============================================
-// FUNÇÃO: Converter Excel para CSV via AppleScript
-// ============================================
-
-function converterExcelParaCSV(caminhoExcel) {
-    var caminhoCSV = Folder.temp.absoluteURI + "/temp_dados.csv";
-    
-    try {
-        // AppleScript para converter Excel para CSV
-        var applescript = 'tell application "Microsoft Excel"\n' +
-            '    activate\n' +
-            '    open "' + caminhoExcel + '"\n' +
-            '    tell active workbook\n' +
-            '        save as it filename "' + caminhoCSV + '" file format CSV file format\n' +
-            '        close without saving\n' +
-            '    end tell\n' +
-            'end tell';
-        
-        // Executar AppleScript
-        var resultado = executarAppleScript(applescript);
-        
-        // Delay para garantir que o arquivo foi criado
-        $.sleep(2000);
-        
-        // Verificar se arquivo CSV foi criado
-        var csvFile = new File(caminhoCSV);
-        if (csvFile.exists) {
-            return caminhoCSV;
-        } else {
-            alert("❌ Erro ao converter Excel para CSV\n\nCertifique-se de:\n1. Ter Microsoft Excel instalado\n2. O arquivo Excel estar fechado");
-            return null;
-        }
-        
-    } catch (e) {
-        alert("❌ Erro ao converter Excel:\n" + e.message);
-        return null;
-    }
 }
 
 // ============================================
@@ -124,7 +67,7 @@ function lerCSV(caminhoCSV) {
         var arquivo = new File(caminhoCSV);
         
         if (!arquivo.exists) {
-            alert("❌ Arquivo CSV não encontrado");
+            alert("❌ Arquivo CSV não encontrado:\n" + caminhoCSV);
             return dados;
         }
         
@@ -141,6 +84,7 @@ function lerCSV(caminhoCSV) {
         }
         
         // Ler dados
+        var linhasLidas = 0;
         while (!arquivo.eof) {
             var linha = arquivo.readln();
             if (linha.trim() === "") continue;
@@ -158,9 +102,14 @@ function lerCSV(caminhoCSV) {
             }
             
             dados[codigo] = linhaData;
+            linhasLidas++;
         }
         
         arquivo.close();
+        
+        if (linhasLidas === 0) {
+            alert("⚠️ Arquivo CSV vazio ou sem dados válidos.");
+        }
         
     } catch (e) {
         alert("❌ Erro ao ler CSV: " + e.message);
@@ -198,37 +147,6 @@ function parseCSVLine(linha) {
     
     valores.push(valorAtual);
     return valores;
-}
-
-// ============================================
-// FUNÇÃO: Ler Excel (macOS via Excel nativo)
-// ============================================
-
-function lerDadosExcel(caminhoExcel) {
-    var dados = null;
-    
-    try {
-        // Converter para CSV usando Excel nativo
-        var caminhoCSV = converterExcelParaCSV(caminhoExcel);
-        
-        if (!caminhoCSV) {
-            return null;
-        }
-        
-        // Ler CSV
-        dados = lerCSV(caminhoCSV);
-        
-        if (!dados || objetoVazio(dados)) {
-            alert("⚠️ Nenhum dado foi lido do Excel.");
-            return null;
-        }
-        
-    } catch (e) {
-        alert("❌ Erro ao processar Excel: " + e.message);
-        return null;
-    }
-    
-    return dados;
 }
 
 // ============================================
@@ -316,7 +234,7 @@ function atualizarCelula(tabela, linhaDados, colunaDados, valor) {
 // FUNÇÃO: Processar uma tabela
 // ============================================
 
-function processarTabela(tabela, dadosExcel) {
+function processarTabela(tabela, dadosCSV) {
     var relatorio = {
         linhasProcessadas: 0,
         linhasAtualizadas: 0,
@@ -342,8 +260,8 @@ function processarTabela(tabela, dadosExcel) {
         
         relatorio.linhasProcessadas++;
         
-        // Buscar dados no Excel
-        var dadosProduto = dadosExcel[codigo];
+        // Buscar dados no CSV
+        var dadosProduto = dadosCSV[codigo];
         
         if (!dadosProduto) {
             relatorio.codigosNaoEncontrados.push(codigo);
@@ -398,7 +316,7 @@ function mostrarRelatorio(relatorios) {
     msg += "   • Total de células atualizadas: " + totalAtualizadas + "\n";
     
     if (todosCodigosNaoEncontrados.length > 0) {
-        msg += "\n⚠️ ATENÇÃO: Alguns códigos não foram encontrados no Excel:\n";
+        msg += "\n⚠️ ATENÇÃO: Alguns códigos não foram encontrados no CSV:\n";
         msg += todosCodigosNaoEncontrados.join(", ");
     }
     
@@ -410,15 +328,15 @@ function mostrarRelatorio(relatorios) {
 // ============================================
 
 function main() {
-    // Selecionar arquivo Excel
-    var arquivoExcel = selecionarArquivoExcel();
+    // Selecionar arquivo CSV
+    var arquivoCSV = selecionarArquivoCSV();
     
-    // Ler dados do Excel
-    alert("📂 Convertendo Excel para CSV...\n(Aguarde, pode levar alguns segundos)");
-    var dadosExcel = lerDadosExcel(arquivoExcel.fsName);
+    // Ler dados do CSV
+    alert("📂 Lendo dados do CSV...");
+    var dadosCSV = lerCSV(arquivoCSV.fsName);
     
-    if (!dadosExcel || objetoVazio(dadosExcel)) {
-        alert("❌ Nenhum dado foi carregado do Excel!");
+    if (!dadosCSV || objetoVazio(dadosCSV)) {
+        alert("❌ Nenhum dado foi carregado do CSV!");
         exit();
     }
     
@@ -435,7 +353,7 @@ function main() {
     // Processar cada tabela
     var relatorios = [];
     for (var t = 0; t < tabelas.length; t++) {
-        var relatorio = processarTabela(tabelas[t].objeto, dadosExcel);
+        var relatorio = processarTabela(tabelas[t].objeto, dadosCSV);
         relatorios.push(relatorio);
     }
     
